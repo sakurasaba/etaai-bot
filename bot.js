@@ -135,13 +135,7 @@ async function handleSummarize(message, userId, channelId) {
 
   try {
     if (!lastActiveTime) {
-      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id);
-      if (!lastActiveTime) {
-        await thinkingMsg.edit(
-          "I couldn't find any previous messages from you in this channel, so I don't know what you've missed. Send a message first, then come back and ask me!"
-        );
-        return;
-      }
+      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id) ?? new Date(0);
     }
 
     const missed = await fetchMissedMessages(channel, lastActiveTime, message.id);
