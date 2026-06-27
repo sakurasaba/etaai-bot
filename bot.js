@@ -2,7 +2,7 @@ require("dotenv").config();
 const { Client, GatewayIntentBits, Partials, ChannelType } = require("discord.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { formatTimeDiff, splitMessage } = require("./utils");
-const { getLastSummaryTime, saveLastSummary } = require("./db");
+const { init, getLastSummaryTime, saveLastSummary } = require("./db");
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_CHUNK_SIZE = 1900;
@@ -130,7 +130,7 @@ async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince
 
 async function handleSummarize(message, userId, channelId) {
   const channel = message.channel;
-  let lastActiveTime = getLastSummaryTime(userId, channelId) ?? (lastSeen.get(userId) || {})[channelId];
+  let lastActiveTime = await getLastSummaryTime(userId, channelId) ?? (lastSeen.get(userId) || {})[channelId];
   const messageId = message.id;
 
   await message.delete().catch(() => {});
@@ -164,7 +164,7 @@ async function handleSummarize(message, userId, channelId) {
 
     await sendSummary(thread, thinkingMsg, summary, missed.length, timeSince);
 
-    saveLastSummary(userId, channelId);
+    await saveLastSummary(userId, channelId);
     if (!lastSeen.has(userId)) lastSeen.set(userId, {});
     lastSeen.get(userId)[channelId] = new Date();
   } catch (err) {
@@ -186,4 +186,4 @@ client.once("ready", () => {
   console.log(`✅ Bot is online as ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+init().then(() => client.login(process.env.DISCORD_TOKEN));

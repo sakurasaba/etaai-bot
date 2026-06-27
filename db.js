@@ -1,34 +1,33 @@
-const Database = require("better-sqlite3");
-const path = require("path");
+const { Pool } = require("pg");
 
-const db = new Database(path.join(process.env.DB_PATH || __dirname, "etaai.db"));
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS last_summary (
-    user_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    summarized_at INTEGER NOT NULL,
-    PRIMARY KEY (user_id, channel_id)
-  )
-`);
-
-const stmtGet = db.prepare(
-  "SELECT summarized_at FROM last_summary WHERE user_id = ? AND channel_id = ?"
-);
-
-const stmtUpsert = db.prepare(`
-  INSERT INTO last_summary (user_id, channel_id, summarized_at)
-  VALUES (?, ?, ?)
-  ON CONFLICT (user_id, channel_id) DO UPDATE SET summarized_at = excluded.summarized_at
-`);
-
-function getLastSummaryTime(userId, channelId) {
-  const row = stmtGet.get(userId, channelId);
-  return row ? new Date(row.summarized_at) : null;
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS last_summary (
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      summarized_at BIGINT NOT NULL,
+      PRIMARY KEY (user_id, channel_id)
+    )
+  `);
 }
 
-function saveLastSummary(userId, channelId) {
-  stmtUpsert.run(userId, channelId, Date.now());
+async function getLastSummaryTime(userId, channelId) {
+  const { rows } = await pool.query(
+    "SELECT summarized_at FROM last_summary WHERE user_id = $1 AND channel_id = $2",
+    [userId, channelId]
+  );
+  return rows.length ? new Date(Number(rows[0].summarized_at)) : null;
 }
 
-module.exports = { getLastSummaryTime, saveLastSummary };
+async function saveLastSummary(userId, channelId) {
+  await pool.query(
+    `INSERT INTO last_summary (user_id, channel_id, summarized_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, channel_id) DO UPDATE SET summarized_at = EXCLUDED.summarized_at`,
+    [userId, channelId, Date.now()]
+  );
+}
+
+module.exports = { init, getLastSummaryTime, saveLastSummary };
