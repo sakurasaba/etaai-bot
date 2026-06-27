@@ -102,19 +102,30 @@ function buildTranscript(messages) {
   return messages
     .map((m) => {
       const time = m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      return `[${time}] ${m.author.username}: ${m.content}`;
+      return `[${time}] ${m.author.username} (${m.url}): ${m.content}`;
     })
     .join("\n");
 }
 
 async function generateSummary(transcript, timeSince) {
-  const prompt = `You are a helpful Discord assistant. Summarize the following missed messages from a Discord channel for a user who has been away for ${timeSince}. Be concise and conversational. Highlight key topics, decisions, questions directed at others, and anything the user should know. Group related messages into themes if helpful.\n\nMissed messages:\n${transcript}`;
+  const prompt = `You are a Discord catch-up bot. The user was away for ${timeSince}. Give them a ultra-short summary of what they missed.
+
+Rules:
+- Maximum 5 bullet points. Fewer is better.
+- Each bullet: one sentence. No fluff.
+- Only include things worth acting on or knowing: decisions, questions aimed at people, plans, drama, important links.
+- Skip small talk, reactions, and filler.
+- For each bullet, append the most relevant message jump link in parentheses so the user can click to reply.
+- Format: • <one sentence> (<discord message url>)
+
+Missed messages:
+${transcript}`;
   const result = await gemini.generateContent(prompt);
   return result.response.text();
 }
 
 async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince) {
-  const header = `📋 **Catch-up summary** — ${missedCount} messages since you were last active (${timeSince} ago):\n\n`;
+  const header = `📋 **${missedCount} messages in the last ${timeSince}:**\n\n`;
   const fullMessage = header + summary;
 
   if (fullMessage.length <= DISCORD_MESSAGE_LIMIT) {

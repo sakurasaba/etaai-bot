@@ -9,10 +9,11 @@ Etaai is a Discord bot that summarizes what you missed in a channel. Mention it 
 ## Features
 
 - **Automatic last-seen tracking** — every message you send is silently timestamped per channel
-- **AI-powered summaries** — Gemini 2.0 Flash condenses missed messages into topics, decisions, and anything notable
+- **AI-powered summaries** — Gemini condenses missed messages into ≤5 bullet points covering only what matters: decisions, questions, plans, and anything worth acting on — filler and small talk are skipped
 - **Smart fallback** — if you've never been seen in a channel (e.g. after a bot restart), it scans recent history to find your last message automatically
 - **Yesterday fallback** — if no prior message is found at all, it summarizes everything since midnight yesterday (up to 500 messages)
 - **Typo-tolerant** — common misspellings like `summerize`, `sumarize`, `summery`, and `summ` all work
+- **Jump links** — each summary bullet includes a clickable link to the most relevant source message so you can jump straight to reply
 - **Long summary support** — responses that exceed Discord's 2000-character limit are automatically split across multiple messages
 - **Memory pruning** — last-seen timestamps older than 7 days are automatically cleaned up
 
@@ -35,7 +36,7 @@ Etaai is a Discord bot that summarizes what you missed in a channel. Mention it 
 2. When you run `@Etaai summarize`, it looks up when you were last active in that channel.
 3. If no in-memory record exists (e.g. after a restart), it scans the last 500 messages to find your most recent one.
 4. If you've never spoken in the channel, it falls back to messages since midnight yesterday.
-5. Gemini AI condenses the missed messages into a concise catch-up.
+5. Gemini AI condenses the missed messages into ≤5 bullets. Each bullet links to the source message so you can jump straight to reply without re-reading the whole channel.
 
 ---
 
