@@ -22,7 +22,7 @@ const client = new Client({
 });
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const gemini = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
+const gemini = genai.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
 const lastSeen = new Map();
 
