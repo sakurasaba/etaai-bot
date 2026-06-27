@@ -69,15 +69,6 @@ npm start
 
 ---
 
-## Hosting 24/7 (Railway)
-
-1. Push your code to GitHub (make sure `.env` is in `.gitignore`)
-2. Go to [railway.app](https://railway.app) and create a new project from your GitHub repo
-3. Add `DISCORD_TOKEN` and `GEMINI_API_KEY` as environment variables in the Railway dashboard
-4. Railway will automatically deploy and keep the bot running
-
----
-
 ## Project Structure
 
 ```
