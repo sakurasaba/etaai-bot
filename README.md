@@ -1,15 +1,39 @@
 # Etaai — Discord Catch-Up Bot
 
-Etaai tracks when you were last active in a channel and, when asked, fetches everything you missed and summarizes it using Gemini AI.
+Etaai is a Discord bot that summarizes what you missed in a channel. Mention it and ask for a summary — it figures out when you were last active and uses Gemini AI to condense everything since then into a readable catch-up.
+
+---
+
+## Features
+
+- **Automatic last-seen tracking** — every message you send is silently timestamped per channel
+- **AI-powered summaries** — Gemini 2.0 Flash condenses missed messages into topics, decisions, and anything notable
+- **Smart fallback** — if you've never been seen in a channel (e.g. after a bot restart), it scans recent history to find your last message automatically
+- **Yesterday fallback** — if no prior message is found at all, it summarizes everything since midnight yesterday (up to 500 messages)
+- **Typo-tolerant** — common misspellings like `summerize`, `sumarize`, `summery`, and `summ` all work
+- **Long summary support** — responses that exceed Discord's 2000-character limit are automatically split across multiple messages
+- **Memory pruning** — last-seen timestamps older than 7 days are automatically cleaned up
+
+---
+
+## Usage
+
+| Action | Result |
+|---|---|
+| Send any message in a channel | Bot silently records your last-seen time |
+| `@Etaai summarize` | Summarizes everything you missed since you were last active |
+| `@Etaai` (no keyword) | Bot reminds you how to ask for a summary |
+| `@Etaai summerize` / `@Etaai summ` | Also works — common misspellings are handled |
 
 ---
 
 ## How It Works
 
 1. Every message you send is silently timestamped per channel.
-2. When you type `@Etaai summarize`, it fetches up to 500 messages posted since your last activity.
-3. Gemini AI condenses them into a concise catch-up — topics, decisions, questions directed at people, and anything notable.
-4. Timestamps older than 7 days are automatically pruned from memory.
+2. When you run `@Etaai summarize`, it looks up when you were last active in that channel.
+3. If no in-memory record exists (e.g. after a restart), it scans the last 500 messages to find your most recent one.
+4. If you've never spoken in the channel, it falls back to messages since midnight yesterday.
+5. Gemini AI condenses the missed messages into a concise catch-up.
 
 ---
 
@@ -56,17 +80,6 @@ npm start
 
 ---
 
-## Usage
-
-| Action | Result |
-|---|---|
-| Send any message in a channel | Bot silently records your last-seen time |
-| `@Etaai summarize` | Bot summarizes everything you missed |
-| `@Etaai` (no keyword) | Bot reminds you how to ask for a summary |
-| `@Etaai summerize` / `@Etaai summ` | Also works — common misspellings are handled |
-
----
-
 ## Project Structure
 
 ```
@@ -93,6 +106,6 @@ npm test
 
 ## Limitations
 
-- **Last-seen resets on restart** — activity data is stored in memory, not a database. On restart, the bot falls back to scanning recent channel history to find your last message (up to 500 messages back). If it can't find one, you'll need to send a message first.
-- **500 message cap** — fetches a maximum of 5 batches of 100 messages (Discord API limit per request).
-- **One channel at a time** — last-seen is tracked per channel, so each channel has its own independent history.
+- **In-memory only** — last-seen data is not persisted to a database, so a restart triggers the history-scan fallback
+- **500 message cap** — fetches a maximum of 5 batches of 100 messages per summary
+- **Per-channel tracking** — each channel maintains its own independent last-seen history
