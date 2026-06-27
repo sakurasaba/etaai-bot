@@ -21,7 +21,7 @@ Etaai is a Discord bot that summarizes what you missed in a channel. Mention it 
 | Action | Result |
 |---|---|
 | Send any message in a channel | Bot silently records your last-seen time |
-| `@Etaai summarize` | Summarizes everything you missed since you were last active |
+| `@Etaai summarize` | Deletes your command, opens a private thread, and posts your catch-up summary there |
 | `@Etaai` (no keyword) | Bot reminds you how to ask for a summary |
 | `@Etaai summerize` / `@Etaai summ` | Also works — common misspellings are handled |
 
@@ -54,7 +54,7 @@ Etaai is a Discord bot that summarizes what you missed in a channel. Mention it 
 
 Go to **OAuth2 → URL Generator**:
 - Scopes: `bot`
-- Bot Permissions: `Read Messages/View Channels`, `Send Messages`, `Read Message History`
+- Bot Permissions: `Read Messages/View Channels`, `Send Messages`, `Read Message History`, `Manage Messages`, `Create Public Threads`
 
 Open the generated URL and invite the bot to your server.
 

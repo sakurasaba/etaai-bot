@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, Partials } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, ChannelType } = require("discord.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { formatTimeDiff, splitMessage } = require("./utils");
 
@@ -130,18 +130,27 @@ async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince
 async function handleSummarize(message, userId, channelId) {
   const channel = message.channel;
   let lastActiveTime = (lastSeen.get(userId) || {})[channelId];
+  const messageId = message.id;
 
-  const thinkingMsg = await message.reply("⏳ Fetching missed messages and summarizing...");
+  await message.delete().catch(() => {});
+
+  const thread = await channel.threads.create({
+    name: `📋 catch-up — ${message.author.username}`,
+    type: ChannelType.PublicThread,
+    autoArchiveDuration: 60,
+  });
+
+  const thinkingMsg = await thread.send("⏳ Fetching missed messages and summarizing...");
 
   try {
     if (!lastActiveTime) {
       const startOfYesterday = new Date();
       startOfYesterday.setDate(startOfYesterday.getDate() - 1);
       startOfYesterday.setHours(0, 0, 0, 0);
-      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id) ?? startOfYesterday;
+      lastActiveTime = await findLastUserMessageTime(channel, userId, messageId) ?? startOfYesterday;
     }
 
-    const missed = await fetchMissedMessages(channel, lastActiveTime, message.id);
+    const missed = await fetchMissedMessages(channel, lastActiveTime, messageId);
 
     if (missed.length === 0) {
       await thinkingMsg.edit("✅ No new messages since you were last active — you're all caught up!");
@@ -152,7 +161,7 @@ async function handleSummarize(message, userId, channelId) {
     const transcript = buildTranscript(missed);
     const summary = await generateSummary(transcript, timeSince);
 
-    await sendSummary(channel, thinkingMsg, summary, missed.length, timeSince);
+    await sendSummary(thread, thinkingMsg, summary, missed.length, timeSince);
 
     if (!lastSeen.has(userId)) lastSeen.set(userId, {});
     lastSeen.get(userId)[channelId] = new Date();
