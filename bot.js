@@ -56,6 +56,22 @@ client.on("messageCreate", async (message) => {
   pruneLastSeen();
 });
 
+async function findLastUserMessageTime(channel, userId, excludeId) {
+  let lastId = null;
+  for (let i = 0; i < DISCORD_FETCH_MAX_BATCHES; i++) {
+    const options = { limit: DISCORD_FETCH_BATCH };
+    if (lastId) options.before = lastId;
+    const batch = await channel.messages.fetch(options);
+    if (batch.size === 0) break;
+    for (const [id, m] of batch) {
+      if (id === excludeId) continue;
+      if (m.author.id === userId && !m.author.bot) return m.createdAt;
+    }
+    lastId = batch.last().id;
+  }
+  return null;
+}
+
 async function fetchMissedMessages(channel, lastActiveTime, excludeId) {
   const allMessages = new Map();
   let lastId = null;
@@ -113,17 +129,21 @@ async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince
 
 async function handleSummarize(message, userId, channelId) {
   const channel = message.channel;
-  const lastActiveTime = (lastSeen.get(userId) || {})[channelId];
-
-  if (!lastActiveTime) {
-    return message.reply(
-      "I haven't seen you active in this channel before, so I don't know what you've missed. Send a message first, then come back later and @mention me!"
-    );
-  }
+  let lastActiveTime = (lastSeen.get(userId) || {})[channelId];
 
   const thinkingMsg = await message.reply("⏳ Fetching missed messages and summarizing...");
 
   try {
+    if (!lastActiveTime) {
+      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id);
+      if (!lastActiveTime) {
+        await thinkingMsg.edit(
+          "I couldn't find any previous messages from you in this channel, so I don't know what you've missed. Send a message first, then come back and ask me!"
+        );
+        return;
+      }
+    }
+
     const missed = await fetchMissedMessages(channel, lastActiveTime, message.id);
 
     if (missed.size === 0) {
@@ -137,6 +157,7 @@ async function handleSummarize(message, userId, channelId) {
 
     await sendSummary(channel, thinkingMsg, summary, missed.size, timeSince);
 
+    if (!lastSeen.has(userId)) lastSeen.set(userId, {});
     lastSeen.get(userId)[channelId] = new Date();
   } catch (err) {
     console.error("Error summarizing:", err);

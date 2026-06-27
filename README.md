@@ -65,8 +65,6 @@ npm start
 | `@Etaai` (no keyword) | Bot reminds you how to ask for a summary |
 | `@Etaai summerize` / `@Etaai summ` | Also works — common misspellings are handled |
 
-**Note:** You must send at least one message in a channel before the bot can summarize it for you. This is how it knows when you were last active.
-
 ---
 
 ## Project Structure
@@ -95,6 +93,6 @@ npm test
 
 ## Limitations
 
-- **Last-seen resets on restart** — activity data is stored in memory, not a database. A bot restart means the bot needs to see you send a new message before it can summarize again.
+- **Last-seen resets on restart** — activity data is stored in memory, not a database. On restart, the bot falls back to scanning recent channel history to find your last message (up to 500 messages back). If it can't find one, you'll need to send a message first.
 - **500 message cap** — fetches a maximum of 5 batches of 100 messages (Discord API limit per request).
 - **One channel at a time** — last-seen is tracked per channel, so each channel has its own independent history.
