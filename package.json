@@ -4,11 +4,15 @@
   "description": "Discord bot that summarizes missed messages using Claude AI",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "test": "jest"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "discord.js": "^14.15.3",
     "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }
