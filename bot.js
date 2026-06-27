@@ -186,4 +186,6 @@ client.once("ready", () => {
   console.log(`✅ Bot is online as ${client.user.tag}`);
 });
 
-init().then(() => client.login(process.env.DISCORD_TOKEN));
+init()
+  .catch((err) => console.error("⚠️ Database unavailable, running without persistence:", err.message))
+  .then(() => client.login(process.env.DISCORD_TOKEN));
