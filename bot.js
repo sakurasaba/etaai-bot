@@ -73,7 +73,7 @@ async function findLastUserMessageTime(channel, userId, excludeId) {
 }
 
 async function fetchMissedMessages(channel, lastActiveTime, excludeId) {
-  const allMessages = new Map();
+  const allMessages = [];
   let lastId = null;
   let reachedCutoff = false;
 
@@ -84,9 +84,9 @@ async function fetchMissedMessages(channel, lastActiveTime, excludeId) {
     const batch = await channel.messages.fetch(options);
     if (batch.size === 0) break;
 
-    for (const [id, m] of batch) {
+    for (const [, m] of batch) {
       if (m.createdAt <= lastActiveTime) { reachedCutoff = true; break; }
-      allMessages.set(id, m);
+      allMessages.push(m);
     }
 
     lastId = batch.last().id;
@@ -146,7 +146,7 @@ async function handleSummarize(message, userId, channelId) {
 
     const missed = await fetchMissedMessages(channel, lastActiveTime, message.id);
 
-    if (missed.size === 0) {
+    if (missed.length === 0) {
       await thinkingMsg.edit("✅ No new messages since you were last active — you're all caught up!");
       return;
     }
@@ -155,7 +155,7 @@ async function handleSummarize(message, userId, channelId) {
     const transcript = buildTranscript(missed);
     const summary = await generateSummary(transcript, timeSince);
 
-    await sendSummary(channel, thinkingMsg, summary, missed.size, timeSince);
+    await sendSummary(channel, thinkingMsg, summary, missed.length, timeSince);
 
     if (!lastSeen.has(userId)) lastSeen.set(userId, {});
     lastSeen.get(userId)[channelId] = new Date();
