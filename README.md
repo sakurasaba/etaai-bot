@@ -1,5 +1,7 @@
 # Etaai — Discord Catch-Up Bot
 
+![Node.js](https://img.shields.io/badge/Node.js-22-green) ![Discord.js](https://img.shields.io/badge/discord.js-v14-5865F2) ![Gemini](https://img.shields.io/badge/Gemini-3%20Flash-blue) ![License](https://img.shields.io/badge/license-MIT-brightgreen)
+
 Etaai is a Discord bot that summarizes what you missed in a channel. Mention it and ask for a summary — it figures out when you were last active and uses Gemini AI to condense everything since then into a readable catch-up.
 
 ---
