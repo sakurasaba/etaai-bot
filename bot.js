@@ -135,7 +135,10 @@ async function handleSummarize(message, userId, channelId) {
 
   try {
     if (!lastActiveTime) {
-      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id) ?? new Date(0);
+      const startOfYesterday = new Date();
+      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+      startOfYesterday.setHours(0, 0, 0, 0);
+      lastActiveTime = await findLastUserMessageTime(channel, userId, message.id) ?? startOfYesterday;
     }
 
     const missed = await fetchMissedMessages(channel, lastActiveTime, message.id);
