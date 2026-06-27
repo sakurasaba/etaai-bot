@@ -1,7 +1,7 @@
 const Database = require("better-sqlite3");
 const path = require("path");
 
-const db = new Database(path.join(__dirname, "etaai.db"));
+const db = new Database(path.join(process.env.DB_PATH || __dirname, "etaai.db"));
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS last_summary (
