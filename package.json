@@ -1,0 +1,14 @@
+{
+  "name": "discord-catchup-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that summarizes missed messages using Claude AI",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "discord.js": "^14.15.3",
+    "dotenv": "^17.4.2"
+  }
+}
