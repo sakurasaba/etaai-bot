@@ -21,7 +21,11 @@ function splitMessage(text, maxLen) {
     let end = start + maxLen;
     if (end < text.length) {
       const lastNewline = text.lastIndexOf("\n", end);
-      if (lastNewline > start) end = lastNewline;
+      if (lastNewline > start) {
+        chunks.push(text.slice(start, lastNewline));
+        start = lastNewline + 1;
+        continue;
+      }
     }
     chunks.push(text.slice(start, end));
     start = end;
@@ -29,4 +33,13 @@ function splitMessage(text, maxLen) {
   return chunks;
 }
 
-module.exports = { formatTimeDiff, splitMessage };
+function buildTranscript(messages) {
+  const lines = messages.map((m, i) => {
+    const time = m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `[ref${i + 1}][${time}] ${m.author.username}: ${m.content}`;
+  });
+  const urlMap = messages.map((m, i) => `ref${i + 1}: ${m.url}`).join("\n");
+  return lines.join("\n") + "\n\nMessage URLs (use in bullets):\n" + urlMap;
+}
+
+module.exports = { formatTimeDiff, splitMessage, buildTranscript };

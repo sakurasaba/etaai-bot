@@ -1,8 +1,56 @@
-const { formatTimeDiff, splitMessage } = require("./utils");
+jest.mock("dotenv", () => ({ config: jest.fn() }));
+jest.mock("discord.js", () => ({
+  Client: jest.fn().mockImplementation(() => ({
+    on: jest.fn(),
+    once: jest.fn(),
+    user: { tag: "TestBot#0000" },
+    login: jest.fn(),
+  })),
+  GatewayIntentBits: { Guilds: 1, GuildMessages: 2, MessageContent: 4, GuildPresences: 8, GuildMembers: 16 },
+  Partials: { Message: "MESSAGE", Channel: "CHANNEL" },
+  ChannelType: { PublicThread: "GUILD_PUBLIC_THREAD" },
+}));
+jest.mock("@google/generative-ai", () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
+    getGenerativeModel: jest.fn().mockReturnValue({}),
+  })),
+}));
+jest.mock("./db", () => ({
+  init: jest.fn().mockResolvedValue(undefined),
+  getLastSummaryTime: jest.fn().mockResolvedValue(null),
+  saveLastSummary: jest.fn().mockResolvedValue(undefined),
+}));
+
+const { formatTimeDiff, splitMessage, buildTranscript } = require("./utils");
+const { fetchMissedMessages } = require("./bot");
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+function makeMessage({ id, authorId, username, content, createdAt, bot = false, url }) {
+  return {
+    id,
+    author: { id: authorId, username, bot },
+    content,
+    createdAt: new Date(createdAt),
+    url: url || `https://discord.com/channels/1/2/${id}`,
+  };
+}
+
+function makeChannel(batches) {
+  let callIndex = 0;
+  return {
+    messages: {
+      fetch: jest.fn(() => {
+        const batch = batches[callIndex++] || [];
+        const map = new Map(batch.map((m) => [m.id, m]));
+        map.last = () => batch[batch.length - 1];
+        return Promise.resolve(map);
+      }),
+    },
+  };
+}
 
 describe("formatTimeDiff", () => {
   test("returns minutes when diff is under an hour", () => {
@@ -55,11 +103,11 @@ describe("splitMessage", () => {
     expect(chunks.join("")).toBe(text);
   });
 
-  test("prefers splitting at newlines over mid-word cuts", () => {
+  test("prefers splitting at newlines and consumes the separator", () => {
     const text = "first line\nsecond line\nthird line";
     const chunks = splitMessage(text, 22);
     expect(chunks[0]).toBe("first line\nsecond line");
-    expect(chunks[1]).toBe("\nthird line");
+    expect(chunks[1]).toBe("third line");
   });
 
   test("falls back to hard cut when no newline is available", () => {
@@ -77,5 +125,144 @@ describe("splitMessage", () => {
   test("handles text exactly equal to maxLen", () => {
     const text = "a".repeat(100);
     expect(splitMessage(text, 100)).toEqual([text]);
+  });
+});
+
+describe("buildTranscript", () => {
+  test("formats messages with ref IDs, timestamps, and a separate URL map", () => {
+    const messages = [
+      makeMessage({ id: "1", authorId: "u1", username: "alice", content: "hello", createdAt: 0, url: "https://discord.com/msg/1" }),
+      makeMessage({ id: "2", authorId: "u2", username: "bob", content: "world", createdAt: MINUTE, url: "https://discord.com/msg/2" }),
+    ];
+    const result = buildTranscript(messages);
+    expect(result).toContain("[ref1]");
+    expect(result).toContain("[ref2]");
+    expect(result).toContain("alice: hello");
+    expect(result).toContain("bob: world");
+    expect(result).toContain("ref1: https://discord.com/msg/1");
+    expect(result).toContain("ref2: https://discord.com/msg/2");
+  });
+
+  test("does not embed URLs in the content lines", () => {
+    const url = "https://discord.com/msg/1";
+    const messages = [makeMessage({ id: "1", authorId: "u1", username: "alice", content: "hi", createdAt: 0, url })];
+    const result = buildTranscript(messages);
+    const contentSection = result.split("\n\nMessage URLs")[0];
+    expect(contentSection).not.toContain(url);
+  });
+
+  test("URL map section lists all message URLs with matching ref IDs", () => {
+    const messages = [
+      makeMessage({ id: "1", authorId: "u1", username: "alice", content: "a", createdAt: 0, url: "https://discord.com/msg/1" }),
+      makeMessage({ id: "2", authorId: "u2", username: "bob", content: "b", createdAt: MINUTE, url: "https://discord.com/msg/2" }),
+    ];
+    const result = buildTranscript(messages);
+    const urlSection = result.split("\n\nMessage URLs (use in bullets):\n")[1];
+    expect(urlSection).toBe("ref1: https://discord.com/msg/1\nref2: https://discord.com/msg/2");
+  });
+});
+
+describe("fetchMissedMessages", () => {
+  const USER_ID = "user123";
+  const EXCLUDE_ID = "trigger-msg";
+  // Pin "now" so startOfYesterday = 2024-01-01T00:00:00Z, keeping test timestamps in range
+  const FAKE_NOW = new Date("2024-01-02T00:00:00Z");
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(FAKE_NOW);
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
+  test("returns messages newer than knownCutoff and preserves cutoffTime", async () => {
+    const cutoff = new Date("2024-01-01T10:00:00Z");
+    const batch = [
+      makeMessage({ id: "3", authorId: "bob", username: "bob", content: "new", createdAt: "2024-01-01T11:00:00Z" }),
+      makeMessage({ id: "2", authorId: "bob", username: "bob", content: "old", createdAt: "2024-01-01T09:30:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages, cutoffTime } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("3");
+    expect(cutoffTime).toEqual(cutoff);
+  });
+
+  test("excludes the trigger message from results", async () => {
+    const cutoff = new Date("2024-01-01T08:00:00Z");
+    const batch = [
+      makeMessage({ id: EXCLUDE_ID, authorId: "bob", username: "bob", content: "trigger", createdAt: "2024-01-01T11:00:00Z" }),
+      makeMessage({ id: "1", authorId: "alice", username: "alice", content: "hello", createdAt: "2024-01-01T10:00:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages.map((m) => m.id)).not.toContain(EXCLUDE_ID);
+    expect(messages[0].id).toBe("1");
+  });
+
+  test("discovers cutoff from user's own last message when knownCutoff is null", async () => {
+    const batch = [
+      makeMessage({ id: "3", authorId: "bob", username: "bob", content: "new msg", createdAt: "2024-01-01T11:00:00Z" }),
+      makeMessage({ id: "2", authorId: USER_ID, username: "me", content: "my old msg", createdAt: "2024-01-01T10:00:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages, cutoffTime } = await fetchMissedMessages(channel, null, USER_ID, EXCLUDE_ID);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("3");
+    expect(cutoffTime).toEqual(new Date("2024-01-01T10:00:00Z"));
+  });
+
+  test("excludes bot messages from results", async () => {
+    const cutoff = new Date("2024-01-01T09:00:00Z");
+    const batch = [
+      makeMessage({ id: "2", authorId: "bot1", username: "BotUser", content: "bot msg", createdAt: "2024-01-01T10:00:00Z", bot: true }),
+      makeMessage({ id: "1", authorId: "human", username: "alice", content: "human msg", createdAt: "2024-01-01T09:30:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("1");
+  });
+
+  test("returns messages sorted chronologically oldest-first", async () => {
+    const cutoff = new Date("2024-01-01T09:00:00Z");
+    const batch = [
+      makeMessage({ id: "3", authorId: "bob", username: "bob", content: "newest", createdAt: "2024-01-01T11:00:00Z" }),
+      makeMessage({ id: "2", authorId: "alice", username: "alice", content: "middle", createdAt: "2024-01-01T10:30:00Z" }),
+      makeMessage({ id: "1", authorId: "charlie", username: "charlie", content: "oldest", createdAt: "2024-01-01T09:30:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages[0].id).toBe("1");
+    expect(messages[1].id).toBe("2");
+    expect(messages[2].id).toBe("3");
+  });
+
+  test("returns empty array and preserves knownCutoff when no new messages exist", async () => {
+    const cutoff = new Date("2024-01-01T12:00:00Z");
+    const batch = [
+      makeMessage({ id: "1", authorId: "bob", username: "bob", content: "old", createdAt: "2024-01-01T10:00:00Z" }),
+    ];
+    const channel = makeChannel([batch]);
+    const { messages, cutoffTime } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages).toHaveLength(0);
+    expect(cutoffTime).toEqual(cutoff);
+  });
+
+  test("stops fetching across multiple batches when cutoff is reached", async () => {
+    const cutoff = new Date("2024-01-01T10:00:00Z");
+    const batch1 = [
+      makeMessage({ id: "3", authorId: "bob", username: "bob", content: "c", createdAt: "2024-01-01T12:00:00Z" }),
+    ];
+    const batch2 = [
+      makeMessage({ id: "2", authorId: "bob", username: "bob", content: "b", createdAt: "2024-01-01T11:00:00Z" }),
+      makeMessage({ id: "1", authorId: "bob", username: "bob", content: "a", createdAt: "2024-01-01T09:00:00Z" }),
+    ];
+    const channel = makeChannel([batch1, batch2]);
+    const { messages } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
+    expect(messages).toHaveLength(2);
+    expect(channel.messages.fetch).toHaveBeenCalledTimes(2);
   });
 });

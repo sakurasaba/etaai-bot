@@ -20,7 +20,8 @@ async function getLastSummaryTime(userId, channelId) {
       [userId, channelId]
     );
     return rows.length ? new Date(Number(rows[0].summarized_at)) : null;
-  } catch {
+  } catch (err) {
+    console.warn("getLastSummaryTime failed, falling back:", err.message);
     return null;
   }
 }
