@@ -21,7 +21,7 @@ async function getLastSummaryTime(userId, channelId) {
     );
     return rows.length ? new Date(Number(rows[0].summarized_at)) : null;
   } catch (err) {
-    console.warn("getLastSummaryTime failed, falling back:", err.message);
+    console.warn("getLastSummaryTime failed, falling back:", err);
     return null;
   }
 }
@@ -35,7 +35,7 @@ async function saveLastSummary(userId, channelId) {
       [userId, channelId, Date.now()]
     );
   } catch (err) {
-    console.error("Failed to save last summary:", err.message);
+    console.error("Failed to save last summary:", err);
   }
 }
 

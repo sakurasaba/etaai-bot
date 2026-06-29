@@ -10,9 +10,10 @@ jest.mock("discord.js", () => ({
   Partials: { Message: "MESSAGE", Channel: "CHANNEL" },
   ChannelType: { PublicThread: "GUILD_PUBLIC_THREAD" },
 }));
+const mockGenerateContent = jest.fn();
 jest.mock("@google/generative-ai", () => ({
   GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-    getGenerativeModel: jest.fn().mockReturnValue({}),
+    getGenerativeModel: jest.fn().mockReturnValue({ generateContent: mockGenerateContent }),
   })),
 }));
 jest.mock("./db", () => ({
@@ -21,8 +22,8 @@ jest.mock("./db", () => ({
   saveLastSummary: jest.fn().mockResolvedValue(undefined),
 }));
 
-const { formatTimeDiff, splitMessage, buildTranscript } = require("./utils");
-const { fetchMissedMessages } = require("./bot");
+const { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe } = require("./utils");
+const { fetchMissedMessages, generateSummary } = require("./bot");
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -125,6 +126,48 @@ describe("splitMessage", () => {
   test("handles text exactly equal to maxLen", () => {
     const text = "a".repeat(100);
     expect(splitMessage(text, 100)).toEqual([text]);
+  });
+});
+
+describe("parseTimeframe", () => {
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  test("parses minutes with short unit", () => {
+    expect(parseTimeframe("@Etaai summarize last 30m")).toBe(30 * MINUTE);
+  });
+
+  test("parses minutes with full word", () => {
+    expect(parseTimeframe("@Etaai summarize last 45 minutes")).toBe(45 * MINUTE);
+  });
+
+  test("parses hours with short unit", () => {
+    expect(parseTimeframe("@Etaai summarize last 6h")).toBe(6 * HOUR);
+  });
+
+  test("parses hours with full word", () => {
+    expect(parseTimeframe("summarize last 12 hours")).toBe(12 * HOUR);
+  });
+
+  test("parses days with short unit", () => {
+    expect(parseTimeframe("last 1d please")).toBe(1 * DAY);
+  });
+
+  test("parses days with full word", () => {
+    expect(parseTimeframe("last 1 day")).toBe(1 * DAY);
+  });
+
+  test("is case-insensitive", () => {
+    expect(parseTimeframe("Last 3 Hours")).toBe(3 * HOUR);
+  });
+
+  test("returns null when no timeframe is present", () => {
+    expect(parseTimeframe("@Etaai summarize")).toBeNull();
+  });
+
+  test("returns null for unrecognised text", () => {
+    expect(parseTimeframe("hey what's up")).toBeNull();
   });
 });
 
@@ -264,5 +307,71 @@ describe("fetchMissedMessages", () => {
     const { messages } = await fetchMissedMessages(channel, cutoff, USER_ID, EXCLUDE_ID);
     expect(messages).toHaveLength(2);
     expect(channel.messages.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("generateSummary", () => {
+  beforeEach(() => {
+    mockGenerateContent.mockReset();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test("returns text on first successful attempt", async () => {
+    mockGenerateContent.mockResolvedValueOnce({ response: { text: () => "• bullet (https://discord.com/msg/1)" } });
+    const result = await generateSummary("transcript", "2h 30m");
+    expect(result).toBe("• bullet (https://discord.com/msg/1)");
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries on 503 and succeeds on second attempt", async () => {
+    const err = Object.assign(new Error("503"), { status: 503 });
+    mockGenerateContent
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ response: { text: () => "• retry succeeded (https://discord.com/msg/2)" } });
+
+    const promise = generateSummary("transcript", "1h 0m");
+    await jest.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result).toBe("• retry succeeded (https://discord.com/msg/2)");
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries on 429 and succeeds on third attempt", async () => {
+    const err = Object.assign(new Error("429"), { status: 429 });
+    mockGenerateContent
+      .mockRejectedValueOnce(err)
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ response: { text: () => "• final attempt (https://discord.com/msg/3)" } });
+
+    const promise = generateSummary("transcript", "45m");
+    await jest.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result).toBe("• final attempt (https://discord.com/msg/3)");
+    expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+  });
+
+  test("throws after exhausting all retry attempts on persistent 503", async () => {
+    const err = Object.assign(new Error("503"), { status: 503 });
+    mockGenerateContent.mockRejectedValue(err);
+
+    const promise = generateSummary("transcript", "3d 5h");
+    const assertion = expect(promise).rejects.toMatchObject({ status: 503 });
+    await jest.runAllTimersAsync();
+    await assertion;
+    expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+  });
+
+  test("does not retry on 400 bad request", async () => {
+    const err = Object.assign(new Error("400"), { status: 400 });
+    mockGenerateContent.mockRejectedValueOnce(err);
+
+    await expect(generateSummary("transcript", "1h 0m")).rejects.toMatchObject({ status: 400 });
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
   });
 });

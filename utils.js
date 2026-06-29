@@ -1,6 +1,7 @@
 const MS_PER_MINUTE = 60000;
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
+const TIMEFRAME_PATTERN = /last\s+(\d+)\s*(m(?:in(?:utes?)?)?|h(?:ours?)?|d(?:ays?)?)\b/i;
 
 function formatTimeDiff(from, to) {
   const diffMs = to - from;
@@ -42,4 +43,15 @@ function buildTranscript(messages) {
   return lines.join("\n") + "\n\nMessage URLs (use in bullets):\n" + urlMap;
 }
 
-module.exports = { formatTimeDiff, splitMessage, buildTranscript };
+function parseTimeframe(text) {
+  const match = TIMEFRAME_PATTERN.exec(text);
+  if (!match) return null;
+  const amount = parseInt(match[1], 10);
+  const unit = match[2][0].toLowerCase();
+  if (unit === "m") return amount * MS_PER_MINUTE;
+  if (unit === "h") return amount * MS_PER_MINUTE * MINUTES_PER_HOUR;
+  if (unit === "d") return amount * MS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+  return null;
+}
+
+module.exports = { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe };

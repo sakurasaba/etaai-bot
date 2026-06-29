@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, Partials, ChannelType } = require("discord.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { formatTimeDiff, splitMessage, buildTranscript } = require("./utils");
+const { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe } = require("./utils");
 const { init, getLastSummaryTime, saveLastSummary } = require("./db");
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -11,7 +11,10 @@ const DISCORD_FETCH_MAX_BATCHES = 5;
 const LAST_SEEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SUMMARIZE_PATTERN = /summar[iy]z?e?|summery|summerise|sumarize|summ/;
 const SUMMARIZE_COOLDOWN_MS = 30 * 1000;
+const SUMMARIZE_MAX_TIMEFRAME_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const GEMINI_RETRY_ATTEMPTS = 3;
+const GEMINI_RETRY_BASE_DELAY_MS = 2000;
 
 const client = new Client({
   intents: [
@@ -133,8 +136,19 @@ Rules:
 
 Missed messages:
 ${transcript}`;
-  const result = await gemini.generateContent(prompt);
-  return result.response.text();
+
+  for (let attempt = 1; attempt <= GEMINI_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const result = await gemini.generateContent(prompt);
+      return result.response.text();
+    } catch (err) {
+      const isRetryable = err.status === 429 || err.status >= 500;
+      if (!isRetryable || attempt === GEMINI_RETRY_ATTEMPTS) throw err;
+      const delay = GEMINI_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.warn(`Gemini attempt ${attempt} failed (${err.status}), retrying in ${delay}ms`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 
 async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince) {
@@ -154,8 +168,16 @@ async function sendSummary(channel, thinkingMsg, summary, missedCount, timeSince
 
 async function handleSummarize(message, userId, channelId) {
   const channel = message.channel;
-  const knownCutoff = await getLastSummaryTime(userId, channelId) ?? (lastSeen.get(userId) || {})[channelId] ?? null;
   const messageId = message.id;
+
+  const requestedMs = parseTimeframe(message.content);
+  let knownCutoff;
+  if (requestedMs !== null) {
+    const clampedMs = Math.min(requestedMs, SUMMARIZE_MAX_TIMEFRAME_MS);
+    knownCutoff = new Date(Date.now() - clampedMs);
+  } else {
+    knownCutoff = await getLastSummaryTime(userId, channelId) ?? (lastSeen.get(userId) || {})[channelId] ?? null;
+  }
 
   await message.delete().catch((err) => {
     if (err.code !== 10008) console.warn("Could not delete summarize message:", err.message);
@@ -224,4 +246,4 @@ if (require.main === module) {
   start();
 }
 
-module.exports = { fetchMissedMessages };
+module.exports = { fetchMissedMessages, generateSummary };
