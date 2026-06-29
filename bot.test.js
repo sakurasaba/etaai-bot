@@ -22,7 +22,7 @@ jest.mock("./db", () => ({
   saveLastSummary: jest.fn().mockResolvedValue(undefined),
 }));
 
-const { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe } = require("./utils");
+const { formatTimeDiff, splitMessage, buildTranscript, resolveRefs, parseTimeframe } = require("./utils");
 const { fetchMissedMessages, generateSummary } = require("./bot");
 
 const MINUTE = 60 * 1000;
@@ -126,6 +126,41 @@ describe("splitMessage", () => {
   test("handles text exactly equal to maxLen", () => {
     const text = "a".repeat(100);
     expect(splitMessage(text, 100)).toEqual([text]);
+  });
+});
+
+describe("resolveRefs", () => {
+  const messages = [
+    { url: "https://discord.com/channels/1/2/100" },
+    { url: "https://discord.com/channels/1/2/200" },
+    { url: "https://discord.com/channels/1/2/300" },
+  ];
+
+  test("replaces ref inside parentheses with the message URL", () => {
+    const summary = "• Something happened (ref2)";
+    expect(resolveRefs(summary, messages)).toBe("• Something happened (https://discord.com/channels/1/2/200)");
+  });
+
+  test("replaces multiple refs in the same summary", () => {
+    const summary = "• First thing (ref1)\n• Second thing (ref3)";
+    expect(resolveRefs(summary, messages)).toBe(
+      "• First thing (https://discord.com/channels/1/2/100)\n• Second thing (https://discord.com/channels/1/2/300)"
+    );
+  });
+
+  test("is case-insensitive for REF", () => {
+    const summary = "• Something (REF1)";
+    expect(resolveRefs(summary, messages)).toBe("• Something (https://discord.com/channels/1/2/100)");
+  });
+
+  test("leaves ref unchanged when index is out of range", () => {
+    const summary = "• Something (ref99)";
+    expect(resolveRefs(summary, messages)).toBe("• Something (ref99)");
+  });
+
+  test("does not replace ref inside longer words", () => {
+    const summary = "• refresh the page (ref1)";
+    expect(resolveRefs(summary, messages)).toBe("• refresh the page (https://discord.com/channels/1/2/100)");
   });
 });
 

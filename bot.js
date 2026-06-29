@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, Partials, ChannelType } = require("discord.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe } = require("./utils");
+const { formatTimeDiff, splitMessage, buildTranscript, resolveRefs, parseTimeframe } = require("./utils");
 const { init, getLastSummaryTime, saveLastSummary } = require("./db");
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -205,7 +205,8 @@ async function handleSummarize(message, userId, channelId) {
 
     const timeSince = formatTimeDiff(cutoffTime, new Date());
     const transcript = buildTranscript(missed);
-    const summary = await generateSummary(transcript, timeSince);
+    const rawSummary = await generateSummary(transcript, timeSince);
+    const summary = resolveRefs(rawSummary, missed);
 
     await sendSummary(thread, thinkingMsg, summary, missed.length, timeSince);
 

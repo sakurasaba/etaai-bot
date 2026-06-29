@@ -43,6 +43,13 @@ function buildTranscript(messages) {
   return lines.join("\n") + "\n\nMessage URLs (use in bullets):\n" + urlMap;
 }
 
+function resolveRefs(summary, messages) {
+  return summary.replace(/\bref(\d+)\b/gi, (match, n) => {
+    const msg = messages[parseInt(n, 10) - 1];
+    return msg ? msg.url : match;
+  });
+}
+
 function parseTimeframe(text) {
   const match = TIMEFRAME_PATTERN.exec(text);
   if (!match) return null;
@@ -54,4 +61,4 @@ function parseTimeframe(text) {
   return null;
 }
 
-module.exports = { formatTimeDiff, splitMessage, buildTranscript, parseTimeframe };
+module.exports = { formatTimeDiff, splitMessage, buildTranscript, resolveRefs, parseTimeframe };
