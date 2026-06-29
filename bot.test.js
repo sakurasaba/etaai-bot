@@ -23,7 +23,7 @@ jest.mock("./db", () => ({
 }));
 
 const { formatTimeDiff, splitMessage, buildTranscript, resolveRefs, parseTimeframe } = require("./utils");
-const { fetchMissedMessages, generateSummary } = require("./bot");
+const { fetchMissedMessages, generateSummary, bulletCountForDuration } = require("./bot");
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -345,6 +345,34 @@ describe("fetchMissedMessages", () => {
   });
 });
 
+describe("bulletCountForDuration", () => {
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+
+  test("returns 7 for durations at exactly 6 hours", () => {
+    expect(bulletCountForDuration(6 * HOUR)).toBe(7);
+  });
+
+  test("returns 7 for durations under 6 hours", () => {
+    expect(bulletCountForDuration(30 * MINUTE)).toBe(7);
+    expect(bulletCountForDuration(5 * HOUR + 59 * MINUTE)).toBe(7);
+  });
+
+  test("returns 9 for durations over 6 hours up to 12 hours", () => {
+    expect(bulletCountForDuration(6 * HOUR + 1)).toBe(9);
+    expect(bulletCountForDuration(12 * HOUR)).toBe(9);
+  });
+
+  test("returns 12 for durations over 12 hours up to 24 hours", () => {
+    expect(bulletCountForDuration(12 * HOUR + 1)).toBe(12);
+    expect(bulletCountForDuration(24 * HOUR)).toBe(12);
+  });
+
+  test("returns 12 for durations beyond 24 hours (clamped at call site but safe)", () => {
+    expect(bulletCountForDuration(48 * HOUR)).toBe(12);
+  });
+});
+
 describe("generateSummary", () => {
   beforeEach(() => {
     mockGenerateContent.mockReset();
@@ -357,9 +385,16 @@ describe("generateSummary", () => {
 
   test("returns text on first successful attempt", async () => {
     mockGenerateContent.mockResolvedValueOnce({ response: { text: () => "• bullet (https://discord.com/msg/1)" } });
-    const result = await generateSummary("transcript", "2h 30m");
+    const result = await generateSummary("transcript", "2h 30m", 7);
     expect(result).toBe("• bullet (https://discord.com/msg/1)");
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+
+  test("injects bullet count into the prompt", async () => {
+    mockGenerateContent.mockResolvedValueOnce({ response: { text: () => "• bullet (url)" } });
+    await generateSummary("transcript", "14h 0m", 12);
+    const calledPrompt = mockGenerateContent.mock.calls[0][0];
+    expect(calledPrompt).toContain("Maximum 12 bullet points");
   });
 
   test("retries on 503 and succeeds on second attempt", async () => {
@@ -368,7 +403,7 @@ describe("generateSummary", () => {
       .mockRejectedValueOnce(err)
       .mockResolvedValueOnce({ response: { text: () => "• retry succeeded (https://discord.com/msg/2)" } });
 
-    const promise = generateSummary("transcript", "1h 0m");
+    const promise = generateSummary("transcript", "1h 0m", 7);
     await jest.runAllTimersAsync();
     const result = await promise;
 
@@ -383,7 +418,7 @@ describe("generateSummary", () => {
       .mockRejectedValueOnce(err)
       .mockResolvedValueOnce({ response: { text: () => "• final attempt (https://discord.com/msg/3)" } });
 
-    const promise = generateSummary("transcript", "45m");
+    const promise = generateSummary("transcript", "45m", 7);
     await jest.runAllTimersAsync();
     const result = await promise;
 
@@ -395,7 +430,7 @@ describe("generateSummary", () => {
     const err = Object.assign(new Error("503"), { status: 503 });
     mockGenerateContent.mockRejectedValue(err);
 
-    const promise = generateSummary("transcript", "3d 5h");
+    const promise = generateSummary("transcript", "3d 5h", 12);
     const assertion = expect(promise).rejects.toMatchObject({ status: 503 });
     await jest.runAllTimersAsync();
     await assertion;
@@ -406,7 +441,7 @@ describe("generateSummary", () => {
     const err = Object.assign(new Error("400"), { status: 400 });
     mockGenerateContent.mockRejectedValueOnce(err);
 
-    await expect(generateSummary("transcript", "1h 0m")).rejects.toMatchObject({ status: 400 });
+    await expect(generateSummary("transcript", "1h 0m", 7)).rejects.toMatchObject({ status: 400 });
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
   });
 });

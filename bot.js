@@ -12,6 +12,11 @@ const LAST_SEEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SUMMARIZE_PATTERN = /summar[iy]z?e?|summery|summerise|sumarize|summ/;
 const SUMMARIZE_COOLDOWN_MS = 30 * 1000;
 const SUMMARIZE_MAX_TIMEFRAME_MS = 24 * 60 * 60 * 1000;
+const SUMMARY_BULLET_TIERS = [
+  { maxMs: 6 * 60 * 60 * 1000, count: 7 },
+  { maxMs: 12 * 60 * 60 * 1000, count: 9 },
+  { maxMs: 24 * 60 * 60 * 1000, count: 12 },
+];
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const GEMINI_RETRY_ATTEMPTS = 3;
 const GEMINI_RETRY_BASE_DELAY_MS = 2000;
@@ -33,6 +38,13 @@ const gemini = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
 const lastSeen = new Map();
 const summarizeCooldowns = new Map();
 let lastPrune = 0;
+
+function bulletCountForDuration(elapsedMs) {
+  for (const { maxMs, count } of SUMMARY_BULLET_TIERS) {
+    if (elapsedMs <= maxMs) return count;
+  }
+  return SUMMARY_BULLET_TIERS[SUMMARY_BULLET_TIERS.length - 1].count;
+}
 
 function pruneLastSeen() {
   const cutoff = Date.now() - LAST_SEEN_MAX_AGE_MS;
@@ -123,11 +135,11 @@ async function fetchMissedMessages(channel, knownCutoff, userId, excludeId) {
   };
 }
 
-async function generateSummary(transcript, timeSince) {
+async function generateSummary(transcript, timeSince, bulletCount) {
   const prompt = `You are a Discord catch-up bot. The user was away for ${timeSince}. Give them an ultra-short summary of what they missed.
 
 Rules:
-- Maximum 5 bullet points. Fewer is better.
+- Maximum ${bulletCount} bullet points. Fewer is better if there is less to cover.
 - Each bullet: one sentence. No fluff.
 - Only include things worth acting on or knowing: decisions, questions aimed at people, plans, drama, important links.
 - Skip small talk, reactions, and filler.
@@ -203,9 +215,11 @@ async function handleSummarize(message, userId, channelId) {
     const thinkingMsg = await thread.send("⏳ Summarizing...");
     errorTarget = thinkingMsg;
 
-    const timeSince = formatTimeDiff(cutoffTime, new Date());
+    const now = new Date();
+    const timeSince = formatTimeDiff(cutoffTime, now);
+    const bulletCount = bulletCountForDuration(now - cutoffTime);
     const transcript = buildTranscript(missed);
-    const rawSummary = await generateSummary(transcript, timeSince);
+    const rawSummary = await generateSummary(transcript, timeSince, bulletCount);
     const summary = resolveRefs(rawSummary, missed);
 
     await sendSummary(thread, thinkingMsg, summary, missed.length, timeSince);
@@ -247,4 +261,4 @@ if (require.main === module) {
   start();
 }
 
-module.exports = { fetchMissedMessages, generateSummary };
+module.exports = { fetchMissedMessages, generateSummary, bulletCountForDuration };
