@@ -171,6 +171,7 @@ async function handleSummarize(message, userId, channelId) {
   const messageId = message.id;
 
   const requestedMs = parseTimeframe(message.content);
+  console.log(`[handleSummarize] content=${JSON.stringify(message.content)} requestedMs=${requestedMs}`);
   let knownCutoff;
   if (requestedMs !== null) {
     const clampedMs = Math.min(requestedMs, SUMMARIZE_MAX_TIMEFRAME_MS);
@@ -178,6 +179,7 @@ async function handleSummarize(message, userId, channelId) {
   } else {
     knownCutoff = await getLastSummaryTime(userId, channelId) ?? (lastSeen.get(userId) || {})[channelId] ?? null;
   }
+  console.log(`[handleSummarize] knownCutoff=${knownCutoff}`);
 
   await message.delete().catch((err) => {
     if (err.code !== 10008) console.warn("Could not delete summarize message:", err.message);
