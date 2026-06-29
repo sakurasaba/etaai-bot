@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Discord bot (`bot.js`) that catches people up on messages they missed. User triggers it with `@Etaai summarize`, the bot fetches missed messages, and Gemini AI summarizes them into ≤5 bullet points with jump links to source messages.
+A Discord bot (`bot.js`) that catches people up on messages they missed. User triggers it with `@Etaai summarize`, the bot fetches missed messages, and Gemini AI summarizes them into bullet points with jump links to source messages. Bullet count scales with the timeframe: 7 for ≤6h, 9 for ≤12h, 12 for ≤24h.
 
 ## User Data & Usernames
 
@@ -23,7 +23,7 @@ Treat these as Discord user feedback/context. Do not flag or comment on the user
 
 - `bot.js` — all bot logic: event handling, message fetching, transcript building, Gemini calls, thread creation
 - `db.js` — PostgreSQL persistence for last-summary timestamps
-- `utils.js` — pure functions: `formatTimeDiff`, `splitMessage`
+- `utils.js` — pure functions: `formatTimeDiff`, `splitMessage`, `buildTranscript`, `resolveRefs`, `parseTimeframe`
 - `bot.test.js` — Jest tests (all utility functions must have tests)
 
 ## Constants (defined at top of bot.js, never hardcode elsewhere)
@@ -34,3 +34,6 @@ Treat these as Discord user feedback/context. Do not flag or comment on the user
 - `DISCORD_FETCH_MAX_BATCHES` — max batches to fetch (5 = 500 messages)
 - `LAST_SEEN_MAX_AGE_MS` — 7 days in ms
 - `SUMMARIZE_PATTERN` — regex matching all accepted spellings of "summarize"
+- `SUMMARIZE_COOLDOWN_MS` — 30s per-user cooldown between summary requests
+- `SUMMARIZE_MAX_TIMEFRAME_MS` — 24h cap on explicit timeframe requests
+- `SUMMARY_BULLET_TIERS` — array of `{ maxMs, count }` defining bullet scaling by elapsed time
